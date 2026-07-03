@@ -1,6 +1,7 @@
 # Compiled binaries
 listener
 overlay
+*.app/
 
 # Python
 __pycache__/

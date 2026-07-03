@@ -73,6 +73,29 @@ class JarvisHTTPHandler(SimpleHTTPRequestHandler):
             # Serve static files
             super().do_GET()
 
+    def do_POST(self):
+        if self.path == '/transcript':
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(post_data.decode('utf-8'))
+                transcript = data.get('transcript', '')
+                
+                from jarvis_listener import handle_transcript_received
+                handle_transcript_received(transcript)
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'{"status":"ok"}')
+            except Exception as e:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(f'{{"error":"{e}"}}'.encode('utf-8'))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     # Disable default log messages to stdout to prevent polluting console output
     def log_message(self, format, *args):
         pass

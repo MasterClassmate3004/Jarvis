@@ -1,76 +1,46 @@
-import subprocess
 import time
 import sys
 import threading
-import os
+
+_active_listener = None
+
+def handle_transcript_received(transcript):
+    """Global callback triggered by the HTTP server when the overlay sends a transcript."""
+    global _active_listener
+    if _active_listener and _active_listener.is_listening:
+        _active_listener.on_transcript(transcript)
 
 class JarvisListener:
-    def __init__(self, binary_path="./listener", silence_timeout=1.5, wake_word="jarvis"):
-        self.binary_path = binary_path
+    def __init__(self, binary_path=None, silence_timeout=1.5, wake_word="jarvis"):
         self.silence_timeout = silence_timeout
         self.wake_word = wake_word.lower()
-        self.process = None
         self.last_transcript_time = time.time()
         self.current_transcript = ""
         self.command_callback = None
         self.is_listening = False
         self.monitor_thread = None
-        self.reader_thread = None
 
     def start(self, callback):
-        """Starts the listener subprocess and registers a callback for commands."""
-        if not os.path.exists(self.binary_path):
-            print(f"Error: Native listener binary not found at {self.binary_path}. Please compile listener.swift first.", file=sys.stderr)
-            return False
-            
+        """Starts the offline listener by listening to callbacks from the overlay."""
+        global _active_listener
         self.command_callback = callback
         self.is_listening = True
-        
-        # Start the native Swift listener as a subprocess
-        self.process = subprocess.Popen(
-            [self.binary_path],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1
-        )
-        
-        # Thread to read output from the Swift process stdout
-        self.reader_thread = threading.Thread(target=self._read_output, daemon=True)
-        self.reader_thread.start()
+        _active_listener = self
         
         # Thread to monitor speech timeouts (silence detection)
         self.monitor_thread = threading.Thread(target=self._monitor_silence, daemon=True)
         self.monitor_thread.start()
         
+        print("[Jarvis] Listener initialized. Waiting for transcriptions from overlay...", flush=True)
         return True
 
-    def _read_output(self):
-        """Reads stdout from the listener process line by line."""
+    def on_transcript(self, transcript):
+        """Called when a transcript is received via the HTTP server."""
         from jarvis_server import set_state
-        for line in iter(self.process.stdout.readline, ''):
-            if not self.is_listening:
-                break
-                
-            line = line.strip()
-            if line.startswith("READY:"):
-                print("[Jarvis] Ready and listening offline...")
-                set_state("READY")
-            elif line.startswith("ERROR:"):
-                print(f"[Jarvis Listener Error] {line[6:]}", file=sys.stderr)
-            elif line.startswith("TRANSCRIPT:"):
-                transcript = line[11:].strip()
-                # Update transcription and time
-                self.current_transcript = transcript
-                self.last_transcript_time = time.time()
-                print(f"[Jarvis Heard] {transcript}", flush=True)
-                set_state("TRANSCRIPT", transcript)
-                
-        # Handle process termination
-        if self.process.poll() is not None:
-            err = self.process.stderr.read()
-            if err:
-                print(f"[Jarvis Listener STDERR] {err.strip()}", file=sys.stderr)
+        self.current_transcript = transcript
+        self.last_transcript_time = time.time()
+        print(f"[Jarvis Heard] {transcript}", flush=True)
+        set_state("TRANSCRIPT", transcript)
 
     def _monitor_silence(self):
         """Monitors silence and triggers callback when the user stops speaking."""
@@ -98,26 +68,6 @@ class JarvisListener:
                         self.command_callback(full_text)
 
     def stop(self):
-        """Stops the listener and kills the subprocess."""
+        """Stops the listener."""
         self.is_listening = False
-        if self.process:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-        print("[Jarvis] Stopped listening.")
-
-if __name__ == "__main__":
-    def dummy_callback(command):
-        print(f"Callback triggered with command: {command}")
-
-    listener = JarvisListener(binary_path="./listener", silence_timeout=1.5)
-    print("Starting listener. Say 'Jarvis, open Safari'...")
-    listener.start(dummy_callback)
-    
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        listener.stop()
+        print("[Jarvis] Stopped listening.", flush=True)

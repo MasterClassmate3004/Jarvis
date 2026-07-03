@@ -8,18 +8,32 @@ import jarvis_server
 
 def compile_overlay():
     if os.path.exists("overlay.swift"):
-        print("[Jarvis] Compiling visual overlay...")
+        print("[Jarvis] Compiling visual overlay App Bundle...")
         try:
+            # Ensure target directories exist inside the bundle
+            os.makedirs("overlay.app/Contents/MacOS", exist_ok=True)
+            
+            # Copy Info-overlay.plist to the bundle structure
+            if os.path.exists("Info-overlay.plist"):
+                subprocess.run(["cp", "Info-overlay.plist", "overlay.app/Contents/Info.plist"], check=True)
+            
             sdk_path = subprocess.check_output(["xcrun", "--show-sdk-path"]).decode('utf-8').strip()
+            
+            # Compile Swift code directly into the bundle
             subprocess.run([
                 "swiftc",
                 "-sdk", sdk_path,
                 "-framework", "Cocoa",
                 "-framework", "WebKit",
+                "-framework", "Speech",
+                "-framework", "AVFoundation",
                 "overlay.swift",
-                "-o", "overlay"
+                "-o", "overlay.app/Contents/MacOS/overlay"
             ], check=True)
-            print("[Jarvis] Visual overlay compiled successfully.")
+            
+            # Sign the entire bundle structure so macOS accepts the Info.plist usage descriptions
+            subprocess.run(["codesign", "--force", "--deep", "--sign", "-", "overlay.app"], check=True)
+            print("[Jarvis] Visual overlay compiled and signed successfully.")
             return True
         except Exception as e:
             print(f"[Jarvis Error] Failed to compile overlay: {e}")
@@ -38,16 +52,15 @@ def main():
     jarvis_server.start_server(port=8000)
     
     # 2. Compile and launch the overlay UI
-    overlay_process = None
     if compile_overlay():
-        if os.path.exists("./overlay"):
+        if os.path.exists("overlay.app"):
             print("[Jarvis] Starting visual overlay UI...")
-            overlay_process = subprocess.Popen(["./overlay"])
+            subprocess.Popen(["open", "overlay.app"])
     
     speak_feedback("Jarvis is online.")
     
-    # Start the offline listener, pointing to the compiled swift binary
-    listener = JarvisListener(binary_path="./listener", silence_timeout=1.5)
+    # Start the offline listener manager
+    listener = JarvisListener(silence_timeout=1.5)
     
     # Whenever the listener finishes transcribing a spoken phrase,
     # it sends it to process_command which queries Ollama and automates the OS.
@@ -55,8 +68,7 @@ def main():
     
     if not success:
         print("[Jarvis] Initialization failed.")
-        if overlay_process:
-            overlay_process.terminate()
+        subprocess.run(["killall", "overlay"], stderr=subprocess.DEVNULL)
         jarvis_server.stop_server()
         return
         
@@ -71,13 +83,8 @@ def main():
         listener.stop()
         
         # Stop overlay UI process
-        if overlay_process:
-            print("[Jarvis] Stopping visual overlay UI...")
-            overlay_process.terminate()
-            try:
-                overlay_process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                overlay_process.kill()
+        print("[Jarvis] Stopping visual overlay UI...")
+        subprocess.run(["killall", "overlay"], stderr=subprocess.DEVNULL)
                 
         # Stop HTTP server
         jarvis_server.stop_server()
