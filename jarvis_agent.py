@@ -70,7 +70,12 @@ EXAMPLES:
 def speak_feedback(text):
     """Speaks feedback text to the user in a separate thread so it doesn't block execution."""
     def run_say():
+        import jarvis_server
+        jarvis_server.set_state("SPEAKING", text)
         subprocess.run(["say", text])
+        # Only revert to READY if the state wasn't changed to TYPING/THINKING in the meantime
+        if jarvis_server._current_state == "SPEAKING":
+            jarvis_server.set_state("READY")
     threading.Thread(target=run_say, daemon=True).start()
 
 def query_ollama(command, model=DEFAULT_MODEL):
@@ -116,60 +121,72 @@ def query_ollama(command, model=DEFAULT_MODEL):
 
 def execute_action(action_json):
     """Executes the mapped native system action based on the parsed JSON from Ollama."""
+    import jarvis_server
     action = action_json.get("action")
     if not action:
         print("[Jarvis Agent] Invalid action format.")
         return False
         
     print(f"[Jarvis Agent] Action: {action}")
+    success = False
     
     if action == "focus_app":
         app = action_json.get("app")
         print(f"-> Focusing {app}")
         speak_feedback(f"Opening {app}")
-        return focus_app(app)
+        success = focus_app(app)
         
     elif action == "search":
         browser = action_json.get("browser", "Safari")
         query = action_json.get("query")
         print(f"-> Searching browser '{browser}' for: '{query}'")
         speak_feedback(f"Searching for {query}")
-        return search_browser(browser, query)
+        jarvis_server.set_state("TYPING", f"Searching for '{query}'...")
+        success = search_browser(browser, query)
         
     elif action == "type_in_app":
         app = action_json.get("app")
         text = action_json.get("text")
         print(f"-> Focusing {app} and typing: '{text}'")
         speak_feedback(f"Typing in {app}")
+        jarvis_server.set_state("TYPING", text)
         if focus_app(app):
             time.sleep(0.5)
-            return visual_type(text, delay=0.015)
-        return False
+            success = visual_type(text, delay=0.015)
         
     elif action == "system_key":
         key = action_json.get("key")
         print(f"-> Pressing key: '{key}'")
-        return press_key(key)
+        success = press_key(key)
         
     elif action == "shortcut":
         modifiers = action_json.get("modifiers", [])
         key = action_json.get("key")
         print(f"-> Shortcut: {modifiers} + {key}")
-        return trigger_shortcut(modifiers, key)
+        success = trigger_shortcut(modifiers, key)
         
     elif action == "unhandled":
         msg = action_json.get("message", "I am not sure how to perform that action.")
         print(f"-> Jarvis Feedback: {msg}")
         speak_feedback(msg)
-        return True
+        success = True
     
     else:
         print(f"-> Unknown action: {action}")
-        return False
+        success = False
+        
+    # Revert state to READY at the end, EXCEPT if the action was focus_app or unhandled
+    # (since those actions ONLY call speak_feedback, and the background say thread will handle the READY transition).
+    if action not in ["focus_app", "unhandled"]:
+        jarvis_server.set_state("READY")
+        
+    return success
 
 def process_command(command, model=DEFAULT_MODEL):
     """Integrates LLM querying and action execution."""
+    import jarvis_server
     print(f"\n[Jarvis Agent] User said: '{command}'")
+    jarvis_server.set_state("THINKING", command)
     action_json = query_ollama(command, model=model)
     print(f"[Jarvis Agent] LLM Plan: {json.dumps(action_json, indent=2)}")
     execute_action(action_json)

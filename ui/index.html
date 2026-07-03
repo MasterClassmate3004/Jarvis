@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis Overlay</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body class="state-ready">
+    <div class="overlay-card">
+        <!-- Draggable handle overlay -->
+        <div class="drag-handle"></div>
+        
+        <!-- Glowing Orb Visualizer -->
+        <div class="orb-container">
+            <div class="orb-glow"></div>
+            <div class="orb-core"></div>
+            <!-- Spinning ring (visible in thinking state) -->
+            <div class="orb-ring"></div>
+            <!-- Ripple waves (visible in typing/speaking states) -->
+            <div class="ripple ripple-1"></div>
+            <div class="ripple ripple-2"></div>
+            <div class="ripple ripple-3"></div>
+            <!-- Audio visualizer bars (visible in listening/ready state) -->
+            <div class="visualizer-bars">
+                <div class="bar bar-1"></div>
+                <div class="bar bar-2"></div>
+                <div class="bar bar-3"></div>
+                <div class="bar bar-4"></div>
+                <div class="bar bar-5"></div>
+            </div>
+        </div>
+        
+        <!-- Text Area -->
+        <div class="text-container">
+            <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span class="status-text">LISTENING</span>
+            </div>
+            <div class="transcript-text" id="transcript">Say "Jarvis" followed by a command...</div>
+        </div>
+    </div>
+    
+    <script src="index.js"></script>
+</body>
+</html>

@@ -47,6 +47,7 @@ class JarvisListener:
 
     def _read_output(self):
         """Reads stdout from the listener process line by line."""
+        from jarvis_server import set_state
         for line in iter(self.process.stdout.readline, ''):
             if not self.is_listening:
                 break
@@ -54,6 +55,7 @@ class JarvisListener:
             line = line.strip()
             if line.startswith("READY:"):
                 print("[Jarvis] Ready and listening offline...")
+                set_state("READY")
             elif line.startswith("ERROR:"):
                 print(f"[Jarvis Listener Error] {line[6:]}", file=sys.stderr)
             elif line.startswith("TRANSCRIPT:"):
@@ -62,6 +64,7 @@ class JarvisListener:
                 self.current_transcript = transcript
                 self.last_transcript_time = time.time()
                 print(f"[Jarvis Heard] {transcript}", flush=True)
+                set_state("TRANSCRIPT", transcript)
                 
         # Handle process termination
         if self.process.poll() is not None:
