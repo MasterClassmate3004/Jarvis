@@ -67,15 +67,35 @@ EXAMPLES:
 - User says: "who created you?" -> {"action": "unhandled", "message": "I am Jarvis, your visual macOS voice assistant."}
 """
 
+_active_say_process = None
+_say_lock = threading.Lock()
+
 def speak_feedback(text):
-    """Speaks feedback text to the user in a separate thread so it doesn't block execution."""
+    """Speaks feedback text to the user in a separate thread, interrupting any active speech."""
+    global _active_say_process
+    
+    if _active_say_process:
+        try:
+            _active_say_process.terminate()
+        except Exception:
+            pass
+            
     def run_say():
-        import jarvis_server
-        jarvis_server.set_state("SPEAKING", text)
-        subprocess.run(["say", text])
-        # Only revert to READY if the state wasn't changed to TYPING/THINKING in the meantime
-        if jarvis_server._current_state == "SPEAKING":
-            jarvis_server.set_state("READY")
+        global _active_say_process
+        with _say_lock:
+            import jarvis_server
+            jarvis_server.set_state("SPEAKING", text)
+            try:
+                _active_say_process = subprocess.Popen(["say", text])
+                _active_say_process.wait()
+            except Exception:
+                pass
+            finally:
+                _active_say_process = None
+                
+            # Only revert to READY if the state wasn't changed to TYPING/THINKING in the meantime
+            if jarvis_server._current_state == "SPEAKING":
+                jarvis_server.set_state("READY")
     threading.Thread(target=run_say, daemon=True).start()
 
 def query_ollama(command, model=DEFAULT_MODEL):

@@ -36,16 +36,28 @@ class JarvisListener:
 
     def on_transcript(self, transcript):
         """Called when a transcript is received via the HTTP server."""
-        from jarvis_server import set_state
+        import jarvis_server
+        # Discard transcripts if the assistant is busy (thinking, typing, speaking)
+        if jarvis_server._current_state not in ["READY", "TRANSCRIPT"]:
+            return
+            
         self.current_transcript = transcript
         self.last_transcript_time = time.time()
         print(f"[Jarvis Heard] {transcript}", flush=True)
-        set_state("TRANSCRIPT", transcript)
+        jarvis_server.set_state("TRANSCRIPT", transcript)
 
     def _monitor_silence(self):
         """Monitors silence and triggers callback when the user stops speaking."""
+        import jarvis_server
         while self.is_listening:
             time.sleep(0.1)
+            
+            # Discard any queued transcripts and skip processing if backend is busy
+            if jarvis_server._current_state not in ["READY", "TRANSCRIPT"]:
+                self.current_transcript = ""
+                self.last_transcript_time = time.time()
+                continue
+                
             # If we have a transcript and silence exceeds the timeout
             if self.current_transcript and (time.time() - self.last_transcript_time > self.silence_timeout):
                 full_text = self.current_transcript.strip()
