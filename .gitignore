@@ -1,0 +1,21 @@
+# Compiled binaries
+listener
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints
+.venv
+venv
+env
+
+# macOS
+.DS_Store
+
+# IDE and Agent files
+.gemini/
+.agents/
+.vscode/
+.idea/
